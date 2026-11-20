@@ -2907,6 +2907,16 @@ def test_directory_without_lockfile_suggests_pyproject(capsys, fake_pypi, tmp_pa
     assert f"wheelgap {tmp_path / 'pyproject.toml'}" in err
 
 
+def test_directory_with_groups_only_pyproject_suggests_group(capsys, fake_pypi, tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        "[dependency-groups]\nzeta = []\n\n[dependency-groups.alpha]\n", encoding="utf-8"
+    )
+    code, _, err = run(capsys, str(tmp_path), "-p", "3.13", "-t", "linux-x86_64")
+    assert code == 2
+    assert f"wheelgap {tmp_path / 'pyproject.toml'} --group NAME" in err
+    assert "(groups: alpha, zeta)" in err
+
+
 # --github-annotations
 
 

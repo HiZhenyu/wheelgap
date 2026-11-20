@@ -2778,18 +2778,31 @@ def find_lockfile(directory: Path, pixi: bool = False) -> Path:
         if candidate.is_file():
             return candidate
     hint = "Pass a file, or package names like `wheelgap numpy psycopg2`."
-    if _has_project_table(directory / "pyproject.toml"):
-        pyproject = directory / "pyproject.toml"
-        hint = f"To check the direct dependencies in its pyproject.toml, run `wheelgap {pyproject}`. " + hint
+    pyproject = directory / "pyproject.toml"
+    project_hint = _pyproject_hint(pyproject)
+    if project_hint:
+        hint = project_hint + " " + hint
     raise SourceError(f"no lockfile found in {directory} (looked for {', '.join(LOCKFILES)}). {hint}")
 
 
-def _has_project_table(pyproject: Path) -> bool:
-    """For the "no lockfile" hint only: a missing or unreadable file just means no hint."""
+def _pyproject_hint(pyproject: Path) -> str | None:
+    """Return a useful no-lockfile hint for a readable pyproject.toml."""
     try:
-        return isinstance(tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project"), dict)
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return False
+        return None
+
+    if isinstance(data.get("project"), dict):
+        return f"To check the direct dependencies in its pyproject.toml, run `wheelgap {pyproject}`."
+
+    groups = data.get("dependency-groups")
+    if isinstance(groups, dict) and groups:
+        names = ", ".join(sorted(groups))
+        return (
+            f"To check a dependency group in its pyproject.toml, run `wheelgap {pyproject} --group NAME` "
+            f"(groups: {names})."
+        )
+    return None
 
 
 def parse_dist(path: Path) -> Source:

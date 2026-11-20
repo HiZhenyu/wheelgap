@@ -1064,6 +1064,36 @@ def test_no_lockfile_without_project_table_has_no_pyproject_hint(tmp_path):
     assert "pyproject.toml`" not in str(e.value)
 
 
+def test_no_lockfile_groups_only_suggests_sorted_group_selection(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        "[dependency-groups]\nzeta = []\n\n[dependency-groups.alpha]\n", encoding="utf-8"
+    )
+    with pytest.raises(SourceError) as e:
+        find_lockfile(tmp_path)
+    message = str(e.value)
+    assert f"wheelgap {tmp_path / 'pyproject.toml'} --group NAME" in message
+    assert "(groups: alpha, zeta)" in message
+
+
+@pytest.mark.parametrize("contents", ["[dependency-groups]\n", "[project]\nname = 'x'\n[dependency-groups]\n"])
+def test_no_lockfile_empty_groups_or_project_keeps_existing_hint_rules(tmp_path, contents):
+    (tmp_path / "pyproject.toml").write_text(contents, encoding="utf-8")
+    with pytest.raises(SourceError) as e:
+        find_lockfile(tmp_path)
+    message = str(e.value)
+    if "[project]" in contents:
+        assert f"wheelgap {tmp_path / 'pyproject.toml'}`" in message
+    else:
+        assert "pyproject.toml`" not in message
+
+
+def test_no_lockfile_unreadable_pyproject_has_no_hint(tmp_path):
+    (tmp_path / "pyproject.toml").write_bytes(b"[dependency-groups]\xff")
+    with pytest.raises(SourceError) as e:
+        find_lockfile(tmp_path)
+    assert "pyproject.toml`" not in str(e.value)
+
+
 def test_poetry_group_selection_keeps_markers_per_group(tmp_path):
     (tmp_path / "poetry.lock").write_text(
         '[[package]]\nname = "colorama"\nversion = "0.4.6"\ngroups = ["main", "dev"]\n'
