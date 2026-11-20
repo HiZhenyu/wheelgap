@@ -2908,13 +2908,20 @@ def test_directory_without_lockfile_suggests_pyproject(capsys, fake_pypi, tmp_pa
 
 
 def test_directory_with_groups_only_pyproject_suggests_group(capsys, fake_pypi, tmp_path):
-    (tmp_path / "pyproject.toml").write_text(
-        "[dependency-groups]\nzeta = []\n\n[dependency-groups.alpha]\n", encoding="utf-8"
-    )
+    (tmp_path / "pyproject.toml").write_text(GROUPS_ONLY_PYPROJECT, encoding="utf-8")
     code, _, err = run(capsys, str(tmp_path), "-p", "3.13", "-t", "linux-x86_64")
     assert code == 2
-    assert f"wheelgap {tmp_path / 'pyproject.toml'} --group NAME" in err
-    assert "(groups: alpha, zeta)" in err
+    assert "no lockfile found" in err
+    assert f"wheelgap {tmp_path / 'pyproject.toml'} --group NAME` (groups: shared, test)." in err
+    assert not fake_pypi
+
+
+def test_directory_with_groups_only_pyproject_in_a_buildable_project_has_no_group_hint(capsys, fake_pypi, tmp_path):
+    (tmp_path / "pyproject.toml").write_text(GROUPS_ONLY_PYPROJECT, encoding="utf-8")
+    (tmp_path / "setup.py").write_text("", encoding="utf-8")
+    code, _, err = run(capsys, str(tmp_path), "-p", "3.13", "-t", "linux-x86_64")
+    assert code == 2
+    assert "no lockfile found" in err and "--group" not in err
 
 
 # --github-annotations

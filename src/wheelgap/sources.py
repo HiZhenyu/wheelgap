@@ -1494,6 +1494,14 @@ def _builds_a_package(data: dict, path: Path) -> bool:
     return (isinstance(flit, dict) and "metadata" in flit) or (isinstance(pdm, dict) and "dependencies" in pdm)
 
 
+def _has_poetry_dependencies(data: dict) -> bool:
+    """Whether [tool.poetry.dependencies] names anything but python."""
+    tool = data.get("tool")
+    poetry = tool.get("poetry") if isinstance(tool, dict) else None
+    poetry_deps = poetry.get("dependencies") if isinstance(poetry, dict) else None
+    return isinstance(poetry_deps, dict) and any(dep.lower() != "python" for dep in poetry_deps)
+
+
 def _project_source(data: dict, path: Path, script: bool = False) -> Source:
     """Shared requirement and provenance handling for project and script metadata (`script`: a # /// script block,
     which errors name instead of [project])."""
@@ -1513,10 +1521,7 @@ def _project_source(data: dict, path: Path, script: bool = False) -> Source:
         # poetry-core 2 builds [tool.poetry.dependencies] into the package whenever [project] lists no dependencies
         # or optional-dependencies (missing or empty: DependencyGroup.dependencies' "legacy mode"). A groups-only file
         # with them is a Poetry project too: --group would leave its dependencies out.
-        tool = data.get("tool")
-        poetry = tool.get("poetry") if isinstance(tool, dict) else None
-        poetry_deps = poetry.get("dependencies") if isinstance(poetry, dict) else None
-        if isinstance(poetry_deps, dict) and any(dep.lower() != "python" for dep in poetry_deps):
+        if _has_poetry_dependencies(data):
             raise SourceError(
                 f"{path}: the dependencies are in [tool.poetry.dependencies], not [project] dependencies, "
                 "so wheelgap can't read them; check poetry.lock instead"
@@ -2785,24 +2790,36 @@ def find_lockfile(directory: Path, pixi: bool = False) -> Path:
     raise SourceError(f"no lockfile found in {directory} (looked for {', '.join(LOCKFILES)}). {hint}")
 
 
+# A dependency group's name as PEP 735 allows it: letters, digits, `.`, `-` and `_`, starting and ending with a
+# letter or digit.
+_GROUP_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
+
+
 def _pyproject_hint(pyproject: Path) -> str | None:
-    """Return a useful no-lockfile hint for a readable pyproject.toml."""
+    """For the "no lockfile" error only: the command that checks the folder's pyproject.toml instead, when there is
+    one that would work. A missing or unreadable file just means no hint."""
     try:
         data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-
     if isinstance(data.get("project"), dict):
         return f"To check the direct dependencies in its pyproject.toml, run `wheelgap {pyproject}`."
-
     groups = data.get("dependency-groups")
-    if isinstance(groups, dict) and groups:
-        names = ", ".join(sorted(groups))
-        return (
-            f"To check a dependency group in its pyproject.toml, run `wheelgap {pyproject} --group NAME` "
-            f"(groups: {names})."
-        )
-    return None
+    if "project" in data or not isinstance(groups, dict):
+        return None
+    # What _project_source refuses with --group: a setuptools, flit, PDM-legacy or Poetry project keeps its own
+    # dependencies outside [project], so the hint would only lead to that error.
+    if _builds_a_package(data, pyproject) or _has_poetry_dependencies(data):
+        return None
+    # The names are text from the file, and this message goes to a terminal, a CI log or an MCP client: only names
+    # PEP 735 allows are repeated, normalized as the `--group` error lists them.
+    names = sorted({canonicalize_name(name) for name in groups if _GROUP_NAME.fullmatch(name)})
+    if not names:
+        return None
+    return (
+        f"To check a dependency group in its pyproject.toml, run `wheelgap {pyproject} --group NAME` "
+        f"(groups: {', '.join(names)})."
+    )
 
 
 def parse_dist(path: Path) -> Source:
