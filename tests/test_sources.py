@@ -1121,14 +1121,24 @@ def test_no_lockfile_group_hint_repeats_only_valid_group_names(tmp_path):
     # A quoted TOML key can hold anything: line breaks, escape codes, a workflow command, a sentence.
     (tmp_path / "pyproject.toml").write_text(
         "[dependency-groups]\n"
-        'Type_Check = []\n"type.check" = []\ndocs = []\n'
+        'Type_Check = []\n"lint.fast" = []\ndocs = []\n'
         '"a\\n::error::b" = []\n"\\u001b[2J" = []\n"run this instead" = []\n"-x" = []\n"caf\\u00e9" = []\n',
         encoding="utf-8",
     )
     with pytest.raises(SourceError) as e:
         find_lockfile(tmp_path)
     assert str(e.value).isprintable()
-    assert "(groups: docs, type-check). Pass a file" in str(e.value)
+    assert "(groups: docs, lint-fast, type-check). Pass a file" in str(e.value)
+
+
+def test_no_lockfile_groups_that_collide_once_normalized_have_no_hint(tmp_path):
+    # `--group` refuses this file whichever group is asked for, so there is no command to suggest.
+    (tmp_path / "pyproject.toml").write_text(
+        '[dependency-groups]\nType_Check = []\n"type.check" = []\ndocs = []\n', encoding="utf-8"
+    )
+    with pytest.raises(SourceError, match="no lockfile found") as e:
+        find_lockfile(tmp_path)
+    assert "pyproject.toml`" not in str(e.value) and "--group" not in str(e.value)
 
 
 def test_no_lockfile_groups_with_no_valid_name_has_no_hint(tmp_path):

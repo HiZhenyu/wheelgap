@@ -2811,6 +2811,9 @@ def _pyproject_hint(pyproject: Path) -> str | None:
     # dependencies outside [project], so the hint would only lead to that error.
     if _builds_a_package(data, pyproject) or _has_poetry_dependencies(data):
         return None
+    keys = [canonicalize_name(name) for name in groups]
+    if len(set(keys)) != len(keys):
+        return None  # two groups that are the same once normalized: refused whichever group is asked for
     # The names are text from the file, and this message goes to a terminal, a CI log or an MCP client: only names
     # PEP 735 allows are repeated, normalized as the `--group` error lists them.
     names = sorted({canonicalize_name(name) for name in groups if _GROUP_NAME.fullmatch(name)})
